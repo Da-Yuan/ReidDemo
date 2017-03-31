@@ -46,10 +46,12 @@ public:
 	afx_msg void OnBnClickedTest();
 	afx_msg void OnBnClickedDetecta();		
 	CEdit m_edit_test;
-
 	afx_msg void OnBnClickedBtnshota();
 	afx_msg void OnBnClickedTest2();
 	afx_msg void OnBnClickedDetectb();
 	afx_msg void OnBnClickedBtnvideotesta();
 	afx_msg void OnBnClickedBtnvideotestb();
+
+private:
+
 };
