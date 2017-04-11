@@ -184,9 +184,6 @@
     </ResourceCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <Text Include="ReadMe.txt" />
-  </ItemGroup>
-  <ItemGroup>
     <ClInclude Include="ReidDemo.h" />
     <ClInclude Include="ReidDemoDlg.h" />
     <ClInclude Include="Resource.h" />

@@ -54,4 +54,6 @@ public:
 
 private:
 
+public:
+	afx_msg void OnBnClickedBtnstart();
 };
