@@ -31,6 +31,9 @@ static std::vector<cv::MatND> srcHistB;
 static vector<double> compareResult;
 // 视频
 static VideoCapture captureA, captureB;
+static VideoCapture vcapA, vcapB;
+static const std::string videoStreamAddressA = "http://192.168.1.143:81/videostream.cgi?user=admin&pwd=888888&.mjpg";
+static const std::string videoStreamAddressB = "http://192.168.1.142:81/videostream.cgi?user=admin&pwd=888888&.mjpg";
 // HOG对象
 static cv::HOGDescriptor hog
 (
@@ -48,7 +51,8 @@ const float* ranges[] = { hRange,sRange };
 // 标志位
 bool offvideoFlagA = false;
 bool offvideoFlagB = false;
-
+bool OLvideoFalgA = false;
+bool OLvideoFalgB = false;
 
 ///函数
 /* @brief 得到一副图像的直方图数据
@@ -103,13 +107,15 @@ void getHistImg(const Mat src, Mat &histimg) {
 
 /* @brief 核心代码
 */
-void coreFunction(void) {
+void coreFunction(CReidDemoDlg * const  obj) {
 	Mat frameA, frameB;
+
 	while (true) {
-		//VideoA
+
+		//offVideoA
 		if (offvideoFlagA) {
 			captureA >> frameA;
-			
+
 			if (!frameA.empty()) {
 				frameA.copyTo(srcImageA);
 
@@ -129,18 +135,22 @@ void coreFunction(void) {
 				imshow("ViewA", dstImageA);
 				waitKey(1);
 			}
+			else {
+				offvideoFlagA = false;
+				continue;
+			}
 		}
-		else {
-			waitKey(30);
-			continue;
-		}
-		//VideoB
+
+		//offVideoB
 		if(offvideoFlagB){
 			captureB >> frameB;
 			frameB.copyTo(srcImageB);
 
 			///若为空帧则跳出，视频播放完成
-			if (frameB.empty()) captureB.release();
+			if (frameB.empty()) {
+				offvideoFlagB = false;
+				continue;
+			}
 
 			// 3. 在测试图像上检测行人区域	
 			hog.detectMultiScale(frameB, regionsB, 0, cv::Size(8, 8), cv::Size(32, 32), 1.15, 1, 0);//detectMultiScale:第六个参数scale通常取值1.01-1.50
@@ -172,10 +182,56 @@ void coreFunction(void) {
 
 			waitKey(1);
 		}
-		else {
-			waitKey(30);
-			continue;
+
+		//OLVideoA
+		if (OLvideoFalgA) {
+				vcapA >> frameA;
+
+				if (frameA.empty()) {
+					cout << "No frame" << endl;
+					break;
+				}
+
+				// 测试图像上检测行人区域			
+				hog.detectMultiScale(frameA, regionsA, 0, cv::Size(8, 8), cv::Size(32, 32), 1.05, 1, 0);//detectMultiScale:第六个参数scale通常取值1.01-1.50
+
+				// 显示
+				for (int i = 0; i < regionsA.size(); i++)
+				{
+					cv::rectangle(frameA, regionsA[i], cv::Scalar(0, 0, 255), 2);
+				}
+				//resize(frameA, frameA, cv::Size(rectA.Width(), rectA.Height()));
+				imshow("ViewA", frameA);
+
+			//if (waitKey(1));
+
 		}
+
+		//OLVideoB
+		if (OLvideoFalgB) {
+			vcapB >> frameB;
+
+			if (frameB.empty()) {
+				cout << "No frame" << endl;
+				break;
+			}
+
+			//// 测试图像上检测行人区域			
+			//hog.detectMultiScale(frameB, regionsB, 0, cv::Size(8, 8), cv::Size(32, 32), 1.05, 1, 0);//detectMultiScale:第六个参数scale通常取值1.01-1.50
+
+			//// 显示
+			//for (int i = 0; i < regionsA.size(); i++)
+			//{
+			//	cv::rectangle(frameB, regionsA[i], cv::Scalar(0, 0, 255), 2);
+			//}
+			//resize(frameA, frameA, cv::Size(rectA.Width(), rectA.Height()));
+			imshow("ViewB", frameB);
+
+			if (waitKey(1));
+		}
+
+		//obj->m_edit_test.SetWindowText(_T("wwww"));
+		waitKey(1);
 	}
 
 }
@@ -242,6 +298,7 @@ BEGIN_MESSAGE_MAP(CReidDemoDlg, CDialogEx)
 	ON_BN_CLICKED(IDC_BtnVideoTestA, &CReidDemoDlg::OnBnClickedBtnvideotesta)
 	ON_BN_CLICKED(IDC_BtnVideoTestB, &CReidDemoDlg::OnBnClickedBtnvideotestb)
 	ON_BN_CLICKED(IDC_BtnStart, &CReidDemoDlg::OnBnClickedBtnstart)
+	ON_BN_CLICKED(IDC_ShowVideoB, &CReidDemoDlg::OnBnClickedShowvideob)
 END_MESSAGE_MAP()
 
 
@@ -374,42 +431,26 @@ HCURSOR CReidDemoDlg::OnQueryDragIcon()
 void CReidDemoDlg::OnBnClickedShowvideoa()
 {
 	// TODO: 在此添加控件通知处理程序代码
-	cv::VideoCapture vcap;
-
-	const std::string videoStreamAddress = "http://192.168.1.120:81/videostream.cgi?user=admin&pwd=888888&.mjpg";
-	/*Address e.g. "http://IP:port/videostream.cgi?user=admin&pwd=******&.mjpg" */
-
-	//open the video stream and make sure it's opened
-	if (!vcap.open(videoStreamAddress)) {
-		AfxMessageBox(_T("打开视频流错误，请检查IP地址！"));
+	OLvideoFalgA = true;
+	// open the video stream and make sure it's opened
+	if (!vcapA.open(videoStreamAddressA)) {
+		AfxMessageBox(_T("打开视频流A错误，请检查IP地址！"));
 	}
-
-	cv::Mat image;
-
-	while (1) {
-		vcap >> image;
-
-		if (image.empty()) {
-			cout << "No frame" << endl;
-			break;
-		}
-
-		// 测试图像上检测行人区域			
-		hog.detectMultiScale(image, regionsA, 0, cv::Size(8, 8), cv::Size(32, 32), 1.05, 1, 0);//detectMultiScale:第六个参数scale通常取值1.01-1.50
-
-		// 显示
-		for (int i = 0; i < regionsA.size(); i++)
-		{
-			cv::rectangle(image, regionsA[i], cv::Scalar(0, 0, 255), 2);
-		}
-		resize(image, image, cv::Size(rectA.Width(), rectA.Height()));
-		cv::imshow("ViewA", image);
-
-		if (waitKey(1));
-	}
-
-	cv::waitKey(0);
 }
+
+
+
+void CReidDemoDlg::OnBnClickedShowvideob()
+{
+	// TODO: 在此添加控件通知处理程序代码
+	OLvideoFalgB = true;
+	// open the video stream and make sure it's opened
+	if (!vcapB.open(videoStreamAddressB)) {
+		AfxMessageBox(_T("打开视频流B错误，请检查IP地址！"));
+	}
+
+}
+
 
 
 void CReidDemoDlg::OnBnClickedTest()
@@ -574,6 +615,7 @@ void CReidDemoDlg::OnBnClickedBtnvideotestb()
 void CReidDemoDlg::OnBnClickedBtnstart()
 {
 	// TODO: 在此添加控件通知处理程序代码
-	coreFunction();
+	coreFunction(this);
 	setMouseCallback("ViewA", onMouse, 0);
 }
+

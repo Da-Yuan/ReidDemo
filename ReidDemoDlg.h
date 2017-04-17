@@ -56,4 +56,5 @@ private:
 
 public:
 	afx_msg void OnBnClickedBtnstart();
+	afx_msg void OnBnClickedShowvideob();
 };
