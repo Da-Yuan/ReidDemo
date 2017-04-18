@@ -192,7 +192,7 @@ void coreFunction(CReidDemoDlg * const  obj) {
 					break;
 				}
 
-				// 测试图像上检测行人区域			
+				// 测试图像上检测行人区域
 				hog.detectMultiScale(frameA, regionsA, 0, cv::Size(8, 8), cv::Size(32, 32), 1.05, 1, 0);//detectMultiScale:第六个参数scale通常取值1.01-1.50
 
 				// 显示
@@ -334,6 +334,7 @@ BOOL CReidDemoDlg::OnInitDialog()
 	SetIcon(m_hIcon, FALSE);		// 设置小图标
 
 	// TODO: 在此添加额外的初始化代码
+	Mat temp;
 	//picture control
 	///PicA
 	namedWindow("ViewA", WINDOW_AUTOSIZE);
@@ -364,6 +365,23 @@ BOOL CReidDemoDlg::OnInitDialog()
 	GetDlgItem(IDC_PicB)->GetClientRect(&rectB);
 	GetDlgItem(IDC_PicXR)->GetClientRect(&rectXR);
 	GetDlgItem(IDC_PicHist)->GetClientRect(&rectHist);
+	//初始显示
+	///PicA
+	temp = imread("./res/cameraA.jpg");
+	resize(temp, temp, cv::Size(rectA.Width(), rectA.Height()));
+	imshow("ViewA", temp);
+	///PicB
+	temp = imread("./res/cameraB.jpg");
+	resize(temp, temp, cv::Size(rectB.Width(), rectB.Height()));
+	imshow("ViewB", temp);
+	///PicXR
+	temp = imread("./res/xrinit.jpg");
+	resize(temp, temp, cv::Size(rectXR.Width(), rectXR.Height()));
+	imshow("ViewXR", temp);
+	///picHist
+	temp = imread("./res/hist.jpg");
+	resize(temp, temp, cv::Size(rectHist.Width(), rectHist.Height()));
+	imshow("ViewHist", temp);
 	//Hog
 	///采用已经训练好的行人检测分类器，另有getDaimlerPeopleDetector()
 	hog.setSVMDetector(cv::HOGDescriptor::getDefaultPeopleDetector()); 
