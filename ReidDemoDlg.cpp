@@ -1,6 +1,19 @@
-
 // ReidDemoDlg.cpp : 实现文件
 //
+
+/*
+Copyright 2017.4 by Da_Yuan
+
+测试视频推荐大小
+分辨率 360*240 (4:3)
+帧率 30
+
+更新编辑框
+CString str;
+str.Format(_T("%d * %d"), rectA.Width(), rectA.Height());
+m_edit_test.SetWindowTextW(str);
+SetDlgItemText(IDD_YOURCTRL, str);
+*/
 
 #include "stdafx.h"
 #include "ReidDemo.h"
@@ -11,6 +24,8 @@
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/opencv.hpp>
 #include <iostream>
+
+#include "Saliency.h"
 
 using namespace cv;
 using namespace std;
@@ -23,7 +38,7 @@ using namespace std;
 static Point origin;
 static Mat srcImageA, srcImageB, srcImageXR;
 static CRect rectA, rectB, rectXR, rectHist;
-static Mat dstImageA, dstImageB;
+//static Mat dstImageA, dstImageB;
 static std::vector<cv::Rect> regionsA;
 static std::vector<cv::Rect> regionsB;
 static MatND HistXR;
@@ -31,8 +46,10 @@ static std::vector<cv::MatND> srcHistB;
 static vector<double> compareResult;
 // 视频
 static VideoCapture captureA, captureB;
+static const std::string offvideoAddressA = "./res/clip1.avi";
+static const std::string offvideoAddressB = "./res/clip2.avi";
 static VideoCapture vcapA, vcapB;
-static const std::string videoStreamAddressA = "http://192.168.1.143:81/videostream.cgi?user=admin&pwd=888888&.mjpg";
+static const std::string videoStreamAddressA = "http://192.168.1.102:81/videostream.cgi?user=admin&pwd=888888&.mjpg";
 static const std::string videoStreamAddressB = "http://192.168.1.142:81/videostream.cgi?user=admin&pwd=888888&.mjpg";
 // HOG对象
 static cv::HOGDescriptor hog
@@ -77,7 +94,7 @@ void getHist(const Mat srcImage, MatND &srcHist) {
 void getHistImg(const Mat src, Mat &histimg) {
 	Mat hue, hist;
 
-	int hsize = 18;
+	int hsize = 9;//直方图bin个数
 	float hranges[] = { 0,180 };
 	const float* phranges = hranges;
 
@@ -105,6 +122,83 @@ void getHistImg(const Mat src, Mat &histimg) {
 	}
 }
 
+/* @brief Saliency_CVPR2010
+@param src 输入图像
+@param dst 输出显著图像
+@return void 返回值为空
+*/
+void Sal2010(Mat src, Mat &salImage) {
+	Saliency sal;
+	vector<unsigned int >imgInput;
+	vector<double> imgSal;
+
+	//Mat to vector
+	//srcImageXR.convertTo();
+	int nr = src.rows; // number of rows  
+	int nc = src.cols; // total number of elements per line  
+	if (src.isContinuous()) {
+		// then no padded pixels  
+		nc = nc*nr;
+		nr = 1;  // it is now a 1D array  
+	}
+
+	for (int j = 0; j<nr; j++) {
+		uchar* data = src.ptr<uchar>(j);
+		for (int i = 0; i<nc; i++) {
+			unsigned int t = 0;
+			t += *data++;
+			t <<= 8;
+			t += *data++;
+			t <<= 8;
+			t += *data++;
+			imgInput.push_back(t);
+
+		}
+	}
+
+	sal.GetSaliencyMap(imgInput, src.cols, src.rows, imgSal);
+
+	//vector to Mat
+	int index0 = 0;
+	for (int h = 0; h < src.rows; h++) {
+		double* p = salImage.ptr<double>(h);
+		for (int w = 0; w < src.cols; w++) {
+			*p++ = imgSal[index0++];
+		}
+	}
+
+	normalize(salImage, salImage, 0, 1, NORM_MINMAX);
+}
+
+
+
+/* @brief 供setMouseCallback调用。
+*/
+static void onMouse(int event, int x, int y, int, void*)
+{
+	Mat dstXR, histimgXR = Mat::zeros(rectHist.Height(), rectHist.Width(), CV_8UC3);
+	switch (event)
+	{
+	case EVENT_LBUTTONDOWN:
+		origin = Point(x, y);
+		for (int i = 0; i < regionsA.size(); i++) {
+			if (origin.inside(regionsA[i]))
+			{
+				//以下操作获取图形控件尺寸并以此改变图片尺寸  
+				srcImageA(regionsA[i]).copyTo(srcImageXR);
+				resize(srcImageXR, dstXR, cv::Size(rectXR.Width(), rectXR.Height()));
+				imshow("ViewXR", dstXR);
+				//直方图
+				getHistImg(srcImageXR, histimgXR);
+				imshow("ViewHist", histimgXR);
+				break;
+			}
+		}
+		//origin = (0,0);
+		break;
+	}
+}
+
 /* @brief 核心代码
 */
 void coreFunction(CReidDemoDlg * const  obj) {
@@ -114,37 +208,56 @@ void coreFunction(CReidDemoDlg * const  obj) {
 
 		//offVideoA
 		if (offvideoFlagA) {
+			OLvideoFalgA = false;
 			captureA >> frameA;
-
-			if (!frameA.empty()) {
-				frameA.copyTo(srcImageA);
-
-				// 在图像上检测行人区域			
-				hog.detectMultiScale(frameA, regionsA, 0, cv::Size(8, 8), cv::Size(32, 32), 1.15, 1, 0);//detectMultiScale:第六个参数scale通常取值1.01-1.50
-				// 显示
-				for (int i = 0; i < regionsA.size(); i++)
-				{
-					regionsA[i].x += cvRound(regionsA[i].width*0.1);
-					regionsA[i].width = cvRound(regionsA[i].width*0.8);
-					regionsA[i].y += cvRound(regionsA[i].height*0.07);
-					regionsA[i].height = cvRound(regionsA[i].height*0.8);
-
-					cv::rectangle(frameA, regionsA[i], cv::Scalar(0, 0, 255), 2);
-				}
-				resize(frameA, dstImageA, cv::Size(rectA.Width(), rectA.Height()));
-				imshow("ViewA", dstImageA);
-				waitKey(1);
-			}
-			else {
+			
+			///若为空帧则跳出，视频播放完成
+			if (frameA.empty()) {
 				offvideoFlagA = false;
 				continue;
 			}
+			resize(frameA, frameA, cv::Size(rectA.Width(), rectA.Height()));
+			frameA.copyTo(srcImageA);
+			// 在图像上检测行人区域			
+			std::vector<cv::Rect> regionsA_uf;
+			hog.detectMultiScale(frameA, regionsA_uf, 0, cv::Size(8, 8), cv::Size(0, 0), 1.4, 1, 0);//detectMultiScale:第六个参数scale通常取值1.01-1.50
+			
+			//遍历found寻找没有被嵌套的长方形
+			regionsA.clear();
+			for (int i = 0; i < regionsA_uf.size(); i++) {
+				Rect r = regionsA_uf[i];
+
+				int j = 0;
+				for (; j < regionsA_uf.size(); j++) {
+					//如果时嵌套的就推出循环
+					if (j != i && (r & regionsA_uf[j]) == r)
+						break;
+				}
+				if ( regionsA_uf.size() == j ) {
+					regionsA.push_back(r);
+				}
+			}
+
+			// 显示
+			for (int i = 0; i < regionsA.size(); i++)
+			{
+				regionsA[i].x += cvRound(regionsA[i].width*0.15);
+				regionsA[i].width = cvRound(regionsA[i].width*0.7);
+				regionsA[i].y += cvRound(regionsA[i].height*0.1);
+				regionsA[i].height = cvRound(regionsA[i].height*0.8);
+
+				cv::rectangle(frameA, regionsA[i], cv::Scalar(0, 0, 255), 2);
+			}
+			
+			imshow("ViewA", frameA);
+			waitKey(1);
+
 		}
 
 		//offVideoB
 		if(offvideoFlagB){
+			OLvideoFalgB = false;
 			captureB >> frameB;
-			frameB.copyTo(srcImageB);
 
 			///若为空帧则跳出，视频播放完成
 			if (frameB.empty()) {
@@ -152,8 +265,29 @@ void coreFunction(CReidDemoDlg * const  obj) {
 				continue;
 			}
 
-			// 3. 在测试图像上检测行人区域	
-			hog.detectMultiScale(frameB, regionsB, 0, cv::Size(8, 8), cv::Size(32, 32), 1.15, 1, 0);//detectMultiScale:第六个参数scale通常取值1.01-1.50
+			//frameB.copyTo(srcImageB);
+			resize(frameB, frameB, cv::Size(rectA.Width(), rectA.Height()));
+			
+			// 3. 在测试图像上检测行人区域
+			std::vector<cv::Rect> regionsB_uf;
+			hog.detectMultiScale(frameB, regionsB_uf, 0, cv::Size(8, 8), cv::Size(0, 0), 1.4, 1, 0);//detectMultiScale:第六个参数scale通常取值1.01-1.50
+			
+			//遍历found寻找没有被嵌套的长方形
+			for (int i = 0; i < regionsB_uf.size(); i++) {
+				Rect r = regionsB_uf[i];
+
+				int j = 0;
+				for (; j < regionsB_uf.size(); j++) {
+					//如果时嵌套的就推出循环
+					if (j != i && (r & regionsB_uf[j]) == r)
+						break;
+				}
+				if (regionsB_uf.size() == j) {
+					regionsB.push_back(r);
+				}
+			}
+			
+			
 			if (regionsB.size()) {
 				srcHistB.resize(regionsB.size());
 				compareResult.resize(regionsB.size());
@@ -161,47 +295,55 @@ void coreFunction(CReidDemoDlg * const  obj) {
 				// 显示
 				for (int i = 0; i < regionsB.size(); i++)
 				{
-					regionsB[i].x += cvRound(regionsB[i].width*0.1);
-					regionsB[i].width = cvRound(regionsB[i].width*0.8);
-					regionsB[i].y += cvRound(regionsB[i].height*0.07);
+					regionsB[i].x += cvRound(regionsB[i].width*0.15);
+					regionsB[i].width = cvRound(regionsB[i].width*0.7);
+					regionsB[i].y += cvRound(regionsB[i].height*0.1);
 					regionsB[i].height = cvRound(regionsB[i].height*0.8);
 
 					tempRoi = frameB(regionsB[i]);
 					getHist(tempRoi, srcHistB[i]);
 					compareResult[i] = compareHist(HistXR, srcHistB[i], 0);
-					//cv::rectangle(detectImage, r, cv::Scalar(0, 0, 255), 2);
+					cv::rectangle(frameB, regionsB[i], cv::Scalar(0, 0, 255), 2);
 				}
 
 				std::vector<double>::iterator biggest = std::max_element(std::begin(compareResult), std::end(compareResult));
 				size_t MaxIndex = std::distance(std::begin(compareResult), biggest);
 
-				cv::rectangle(frameB, regionsB[MaxIndex], cv::Scalar(0, 0, 255), 2);
+				CString str;
+				str.Format(_T("%.2lf"), compareResult[MaxIndex]);
+				obj->SetDlgItemText(IDC_EDIT_Test, str);
+				if(compareResult[MaxIndex]<0.7)
+						cv::rectangle(frameB, regionsB[MaxIndex], cv::Scalar(0, 0, 255), 2);
+				else
+					cv::rectangle(frameB, regionsB[MaxIndex], cv::Scalar(0, 255, 0), 2);
+				MaxIndex = 0;
 			}
-			resize(frameB, dstImageB, cv::Size(rectA.Width(), rectA.Height()));
-			imshow("ViewB", dstImageB);
-
+			regionsB.clear();
+			
+			imshow("ViewB", frameB);
 			waitKey(1);
 		}
 
 		//OLVideoA
 		if (OLvideoFalgA) {
-				vcapA >> frameA;
+			offvideoFlagA = false;
+			vcapA >> frameA;
 
-				if (frameA.empty()) {
-					cout << "No frame" << endl;
-					break;
-				}
+			if (frameA.empty()) {
+				cout << "No frame" << endl;
+				break;
+			}
 
-				// 测试图像上检测行人区域
-				hog.detectMultiScale(frameA, regionsA, 0, cv::Size(8, 8), cv::Size(32, 32), 1.05, 1, 0);//detectMultiScale:第六个参数scale通常取值1.01-1.50
+			// 测试图像上检测行人区域
+			hog.detectMultiScale(frameA, regionsA, 0, cv::Size(8, 8), cv::Size(32, 32), 1.25, 1, 0);//detectMultiScale:第六个参数scale通常取值1.01-1.50
 
-				// 显示
-				for (int i = 0; i < regionsA.size(); i++)
-				{
-					cv::rectangle(frameA, regionsA[i], cv::Scalar(0, 0, 255), 2);
-				}
-				//resize(frameA, frameA, cv::Size(rectA.Width(), rectA.Height()));
-				imshow("ViewA", frameA);
+			// 显示
+			for (int i = 0; i < regionsA.size(); i++)
+			{
+				cv::rectangle(frameA, regionsA[i], cv::Scalar(0, 0, 255), 2);
+			}
+			//resize(frameA, frameA, cv::Size(rectA.Width(), rectA.Height()));
+			imshow("ViewA", frameA);
 
 			//if (waitKey(1));
 
@@ -209,6 +351,7 @@ void coreFunction(CReidDemoDlg * const  obj) {
 
 		//OLVideoB
 		if (OLvideoFalgB) {
+			offvideoFlagB = false;
 			vcapB >> frameB;
 
 			if (frameB.empty()) {
@@ -236,6 +379,7 @@ void coreFunction(CReidDemoDlg * const  obj) {
 
 }
 
+/*------------------------------------------------------------------*/
 
 // 用于应用程序“关于”菜单项的 CAboutDlg 对话框
 class CAboutDlg : public CDialogEx
@@ -290,15 +434,14 @@ BEGIN_MESSAGE_MAP(CReidDemoDlg, CDialogEx)
 	ON_WM_PAINT()
 	ON_WM_QUERYDRAGICON()
 	ON_BN_CLICKED(IDC_ShowVideoA, &CReidDemoDlg::OnBnClickedShowvideoa)
-	ON_BN_CLICKED(IDC_Test, &CReidDemoDlg::OnBnClickedTest)
-	ON_BN_CLICKED(IDC_DetectA, &CReidDemoDlg::OnBnClickedDetecta)
 	ON_BN_CLICKED(IDC_BtnShotA, &CReidDemoDlg::OnBnClickedBtnshota)
-	ON_BN_CLICKED(IDC_Test2, &CReidDemoDlg::OnBnClickedTest2)
-	ON_BN_CLICKED(IDC_DetectB, &CReidDemoDlg::OnBnClickedDetectb)
 	ON_BN_CLICKED(IDC_BtnVideoTestA, &CReidDemoDlg::OnBnClickedBtnvideotesta)
 	ON_BN_CLICKED(IDC_BtnVideoTestB, &CReidDemoDlg::OnBnClickedBtnvideotestb)
 	ON_BN_CLICKED(IDC_BtnStart, &CReidDemoDlg::OnBnClickedBtnstart)
 	ON_BN_CLICKED(IDC_ShowVideoB, &CReidDemoDlg::OnBnClickedShowvideob)
+	ON_BN_CLICKED(IDC_BtnShotB, &CReidDemoDlg::OnBnClickedBtnshotb)
+	ON_WM_TIMER()
+	ON_BN_CLICKED(IDC_BtnSal, &CReidDemoDlg::OnBnClickedBtnsal)
 END_MESSAGE_MAP()
 
 
@@ -385,7 +528,6 @@ BOOL CReidDemoDlg::OnInitDialog()
 	//Hog
 	///采用已经训练好的行人检测分类器，另有getDaimlerPeopleDetector()
 	hog.setSVMDetector(cv::HOGDescriptor::getDefaultPeopleDetector()); 
-	
 
 	return TRUE;  // 除非将焦点设置到控件，否则返回 TRUE
 }
@@ -444,8 +586,9 @@ HCURSOR CReidDemoDlg::OnQueryDragIcon()
 	return static_cast<HCURSOR>(m_hIcon);
 }
 
+/*-----------------------------用户控件-----------------------------*/
 
-
+// 【按钮】 获取实时画面A
 void CReidDemoDlg::OnBnClickedShowvideoa()
 {
 	// TODO: 在此添加控件通知处理程序代码
@@ -456,8 +599,7 @@ void CReidDemoDlg::OnBnClickedShowvideoa()
 	}
 }
 
-
-
+// 【按钮】 获取实时画面B
 void CReidDemoDlg::OnBnClickedShowvideob()
 {
 	// TODO: 在此添加控件通知处理程序代码
@@ -469,171 +611,65 @@ void CReidDemoDlg::OnBnClickedShowvideob()
 
 }
 
-
-
-void CReidDemoDlg::OnBnClickedTest()
-{
-	// TODO: 在此添加控件通知处理程序代码
-	//读入图片
-	srcImageA = imread("./res/01/0102.jpg");
-
-	//改变图片尺寸
-	resize(srcImageA, dstImageA, cv::Size(rectA.Width(), rectA.Height()));
-	
-	imshow("ViewA", dstImageA);
-}
-
-/* @brief 供setMouseCallback调用。
-*/
-static void onMouse(int event, int x, int y, int, void*)
-{
-	Mat dstXR, histimgXR = Mat::zeros(rectHist.Height(), rectHist.Width(), CV_8UC3);
-	switch (event)
-	{
-	case EVENT_LBUTTONDOWN:
-		origin = Point(x, y);
-		for (int i = 0; i < regionsA.size(); i++) {
-			if (origin.inside(regionsA[i]))
-			{				
-				//以下操作获取图形控件尺寸并以此改变图片尺寸  
-				srcImageXR = srcImageA(regionsA[i]);
-				resize(srcImageXR, dstXR, cv::Size(rectXR.Width(), rectXR.Height()));
-				imshow("ViewXR", dstXR);
-				//直方图
-				getHistImg(srcImageXR, histimgXR);
-				imshow("ViewHist", histimgXR);
-				break;
-			}
-		}
-		break;
-	}
-}
-
-void CReidDemoDlg::OnBnClickedDetecta()
-{
-	// TODO: 在此添加控件通知处理程序代码
-	Mat detectImage;
-	dstImageA.copyTo(detectImage);
-	
-	// 在测试图像上检测行人区域	
-	///detectMultiScale:第六个参数scale通常取值1.01-1.50
-	hog.detectMultiScale(detectImage, regionsA, 0, cv::Size(8, 8), cv::Size(32, 32), 1.05, 1, 0);
-	
-	// 显示
-	for (size_t i = 0; i < regionsA.size(); i++)
-	{
-		regionsA[i].x += cvRound(regionsA[i].width*0.1);
-		regionsA[i].width = cvRound(regionsA[i].width*0.8);
-		regionsA[i].y += cvRound(regionsA[i].height*0.07);
-		regionsA[i].height = cvRound(regionsA[i].height*0.8);
-
-		cv::rectangle(detectImage, regionsA[i], cv::Scalar(0, 0, 255), 2);
-	}
-	imshow("ViewA", detectImage);
-
-	setMouseCallback("ViewA", onMouse, 0);
-}
-
-
+// 【按钮】 截图A
 void CReidDemoDlg::OnBnClickedBtnshota()
 {
 	// TODO: 在此添加控件通知处理程序代码
+	offvideoFlagA = false;
 
 }
 
-
-void CReidDemoDlg::OnBnClickedTest2()
+// 【按钮】 截图B
+void CReidDemoDlg::OnBnClickedBtnshotb()
 {
 	// TODO: 在此添加控件通知处理程序代码
-	//读入图片
-	srcImageB = imread("./res/01/0104.jpg");
-
-	//以下操作获取图形控件尺寸并以此改变图片尺寸  
-	resize(srcImageB, dstImageB, cv::Size(rectB.Width(), rectB.Height()));
-
-	imshow("ViewB", dstImageB);
 }
 
-
-void CReidDemoDlg::OnBnClickedDetectb()
-{
-	if (!srcImageXR.empty())
-	{
-		getHist(srcImageXR, HistXR);
-
-		// TODO: 在此添加控件通知处理程序代码
-		Mat detectImage;
-		dstImageB.copyTo(detectImage);
-
-		// 3. 在测试图像上检测行人区域	
-		hog.detectMultiScale(detectImage, regionsB, 0, cv::Size(8, 8), cv::Size(32, 32), 1.05, 1, 0);//detectMultiScale:第六个参数scale通常取值1.01-1.50
-		if (regionsB.size()) {
-			srcHistB.resize(regionsB.size());
-			Mat tempRoi;
-			// 显示
-			for (int i = 0; i < regionsB.size(); i++)
-			{
-				regionsB[i].x += cvRound(regionsB[i].width*0.1);
-				regionsB[i].width = cvRound(regionsB[i].width*0.8);
-				regionsB[i].y += cvRound(regionsB[i].height*0.07);
-				regionsB[i].height = cvRound(regionsB[i].height*0.8);
-
-				tempRoi = detectImage(regionsB[i]);
-				getHist(tempRoi, srcHistB[i]);
-
-				//cv::rectangle(detectImage, r, cv::Scalar(0, 0, 255), 2);
-			}
-			vector<double> compareResult;
-			compareResult.resize(regionsB.size());
-			CString str;
-			for (int i = 0; i < regionsB.size(); i++) {
-				compareResult[i] = compareHist(HistXR, srcHistB[i], 0);
-			}
-			std::vector<double>::iterator biggest = std::max_element(std::begin(compareResult), std::end(compareResult));
-			size_t MaxIndex = std::distance(std::begin(compareResult), biggest);
-
-			str.Format(_T("%.2f"), compareResult[MaxIndex]);
-			SetDlgItemText(IDC_EDIT_Test, str);
-
-			cv::rectangle(detectImage, regionsB[MaxIndex], cv::Scalar(0, 0, 255), 2);
-		}
-		else {
-			AfxMessageBox(_T("未检测到行人！"));
-		}
-		imshow("ViewB", detectImage);
-	}
-	else AfxMessageBox(_T("未选择行人！"));
-}
-
-
+// 【按钮】 离线视频A
 void CReidDemoDlg::OnBnClickedBtnvideotesta()
 {
 	// TODO: 在此添加控件通知处理程序代码
 	setMouseCallback("ViewA", onMouse, 0);
 	
 	//captureA.open("./res/viptrain.avi");
-	captureA.open("./res/viptrain.avi");
+	captureA.open(offvideoAddressA);
 	
-
 	offvideoFlagA = true;
 }
 
-
+// 【按钮】 离线视频B
 void CReidDemoDlg::OnBnClickedBtnvideotestb()
 {
 	// TODO: 在此添加控件通知处理程序代码
 	// 得到行人的颜色直方图
+	if (srcImageXR.empty()) {
+		AfxMessageBox(_T("请选择行人！"));
+		return;
+	}
 	getHist(srcImageXR, HistXR);
 
-	captureB.open("./res/viptrain.avi");
+	captureB.open(offvideoAddressB);
 
 	offvideoFlagB = true;
 }
 
+// 【按钮】 开始
 void CReidDemoDlg::OnBnClickedBtnstart()
 {
 	// TODO: 在此添加控件通知处理程序代码
-	coreFunction(this);
 	setMouseCallback("ViewA", onMouse, 0);
+
+	coreFunction(this);
 }
 
+
+void CReidDemoDlg::OnBnClickedBtnsal()
+{
+	// TODO: 在此添加控件通知处理程序代码
+	Mat salImage(srcImageXR.size(), CV_64FC1);
+
+	Sal2010(srcImageXR, salImage);
+
+	resize(salImage, salImage, cv::Size(rectXR.Width(), rectXR.Height()));
+	imshow("ViewXR", salImage);
+}

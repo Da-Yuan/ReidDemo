@@ -9,6 +9,7 @@
 #include <opencv2/opencv.hpp>
 #include "gdiplustypes.h"
 #include "afxwin.h"
+#include "Saliency.h"
 #include "D:\Program Files (x86)\opencv\build\include\opencv2\core\mat.hpp"
 
 using namespace cv;
@@ -29,8 +30,6 @@ public:
 	protected:
 	virtual void DoDataExchange(CDataExchange* pDX);	// DDX/DDV 支持
 	
-
-
 // 实现
 protected:
 	HICON m_hIcon;
@@ -42,13 +41,9 @@ protected:
 	afx_msg HCURSOR OnQueryDragIcon();
 	DECLARE_MESSAGE_MAP()
 public:
-	afx_msg void OnBnClickedShowvideoa();
-	afx_msg void OnBnClickedTest();
-	afx_msg void OnBnClickedDetecta();		
+	afx_msg void OnBnClickedShowvideoa();	
 	CEdit m_edit_test;
 	afx_msg void OnBnClickedBtnshota();
-	afx_msg void OnBnClickedTest2();
-	afx_msg void OnBnClickedDetectb();
 	afx_msg void OnBnClickedBtnvideotesta();
 	afx_msg void OnBnClickedBtnvideotestb();
 
@@ -57,4 +52,6 @@ private:
 public:
 	afx_msg void OnBnClickedBtnstart();
 	afx_msg void OnBnClickedShowvideob();
+	afx_msg void OnBnClickedBtnshotb();
+	afx_msg void OnBnClickedBtnsal();
 };
